@@ -1,0 +1,24 @@
+# against valeoai/NAF 37f2dfc; apply in ~/.cache/torch/hub/valeoai_NAF_main with patch -p1
+--- a/src/layers/attentions.py
++++ b/src/layers/attentions.py
+@@ -11,6 +11,8 @@
+     from natten import na2d
+ 
+ from src.layers.rope import RoPE
++import natten as natten_mod
++NATTEN_LOWRES = hasattr(natten_mod, "na2d_lowres")
+ 
+ 
+ def legacy_attention(q, k, v, kernel_size, dilation, scale=1, return_weights=False):
+@@ -57,6 +59,11 @@
+         self.dilation = dilation
+ 
+         q = rearrange(q, "b (n d) h w -> b h w n d", n=self.num_heads)
++        if NATTEN_LOWRES and not return_weights and k.shape[-2:] == v.shape[-2:] and hq % hk == 0 and wq % wk == 0:
++            # AMD/ROCm shim: no 4 GB upsampled key/value maps, bf16 output (see ~/src/pixal3d/shims/natten)
++            k = rearrange(k, "b (n d) h w -> b h w n d", n=self.num_heads).to(q.dtype)
++            v = rearrange(v, "b (n d) h w -> b h w n d", n=self.num_heads).to(q.dtype)
++            return natten_mod.na2d_lowres(q, k, v, self.kernel_size)
+         k = self._resize(k, size=(hq, wq), dtype=q.dtype)
+         v = self._resize(v, size=(hq, wq), dtype=q.dtype)
+ 

@@ -1,4 +1,7 @@
 from typing import *
+import ctypes
+import gc
+import os
 import torch
 import torch.nn as nn
 import numpy as np
@@ -120,7 +123,8 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         pipeline.image_cond_model_shape_1024 = None
         pipeline.image_cond_model_tex_1024 = None
 
-        pipeline.rembg_model = getattr(rembg, args['rembg_model']['name'])(**args['rembg_model']['args'])
+        pipeline.rembg_model = None  # loaded on first use: only images without alpha need it (briaai/RMBG-2.0 is gated)
+        pipeline._rembg_args = args['rembg_model']
         
         pipeline.low_vram = args.get('low_vram', True)
         pipeline.default_pipeline_type = args.get('default_pipeline_type', '1024_cascade')
@@ -163,6 +167,8 @@ class Pixal3DImageTo3DPipeline(Pipeline):
             output = input
         else:
             input = input.convert('RGB')
+            if self.rembg_model is None:
+                self.rembg_model = getattr(rembg, self._rembg_args['name'])(**self._rembg_args['args'])
             if self.low_vram:
                 self.rembg_model.to(self.device)
             output = self.rembg_model(input)
@@ -227,6 +233,18 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         }
 
     @torch.no_grad()
+    def _oneshot_free(self, keep=()):
+        """Single-image runs (PIXAL_ONESHOT=1): release finished flow and conditioning models from RAM."""
+        if not os.environ.get("PIXAL_ONESHOT"):
+            return
+        for k in [k for k in self.models if "flow_model" in k and k not in keep]:
+            del self.models[k]
+        for k in ("image_cond_model_ss", "image_cond_model_shape_512", "image_cond_model_shape_1024", "image_cond_model_tex_1024"):
+            if k not in keep:
+                setattr(self, k, None)
+        gc.collect()
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+
     def get_proj_cond_shape(
         self,
         image_cond_model: nn.Module,
@@ -587,9 +605,16 @@ class Pixal3DImageTo3DPipeline(Pipeline):
             resolution (int): The resolution of the output.
         """
         meshes, subs = self.decode_shape_slat(shape_slat, resolution)
+        torch.cuda.empty_cache()
         tex_voxels = self.decode_tex_slat(tex_slat, subs)
         out_mesh = []
         torch.cuda.synchronize()
+        if self.low_vram:
+            # CuMesh allocates through HIP directly, so PyTorch has to give its cached VRAM back first.
+            tex_voxels = tex_voxels.cpu()
+            del subs
+            gc.collect()
+            torch.cuda.empty_cache()
         for m, v in zip(meshes, tex_voxels):
             m.fill_holes()
             out_mesh.append(
@@ -726,6 +751,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         del lr_slat, hr_coords, quant_coords
         torch.cuda.empty_cache()
 
+        self._oneshot_free(("shape_slat_flow_model_1024", "tex_slat_flow_model_1024", "image_cond_model_shape_1024", "image_cond_model_tex_1024"))
         # ---- Stage 3b: Shape HR (proj) ----
         cond_shape_hr = self.get_proj_cond_shape(
             self.image_cond_model_shape_1024, [image], hr_coords_unique,
@@ -758,6 +784,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         del cond_shape_hr, noise_hr, hr_slat, hr_coords_unique
         torch.cuda.empty_cache()
 
+        self._oneshot_free(("tex_slat_flow_model_1024", "image_cond_model_tex_1024"))
         # ---- Stage 4: Texture (proj) ----
         tex_grid_res = actual_hr_resolution // 16
         cond_tex = self.get_proj_cond_shape(
@@ -774,6 +801,7 @@ class Pixal3DImageTo3DPipeline(Pipeline):
         del cond_tex
         torch.cuda.empty_cache()
 
+        self._oneshot_free(())
         # ---- Stage 5: Decode ----
         res = actual_hr_resolution
         out_mesh = self.decode_latent(shape_slat, tex_slat, res)

@@ -124,6 +124,24 @@ def sample_features(fmap: torch.Tensor, queries_ndc: torch.Tensor) -> torch.Tens
     assert Bq == B, "Batch size mismatch"
 
     # grid_sample requires (B, out_h, out_w, 2), here we want K points -> out_h=K, out_w=1
+    if fmap.dtype != queries_ndc.dtype:
+        # bf16 feature map, fp32 coordinates (grid_sample needs matching types and bf16 coordinates are too coarse):
+        # same result as grid_sample(bilinear, align_corners=False, padding_mode='border').
+        q = queries_ndc.float()
+        x = (((q[..., 0] + 1) * W - 1) / 2).clamp(0, W - 1)
+        y = (((q[..., 1] + 1) * H - 1) / 2).clamp(0, H - 1)
+        x0 = x.floor().long().clamp(max=max(W - 2, 0)); y0 = y.floor().long().clamp(max=max(H - 2, 0))
+        x1 = (x0 + 1).clamp(max=W - 1); y1 = (y0 + 1).clamp(max=H - 1)
+        wx = (x - x0)[:, None]; wy = (y - y0)[:, None]
+        b = torch.arange(B, device=fmap.device)[:, None]
+        out = torch.empty(B, C, K, device=fmap.device, dtype=torch.float32)
+        for i in range(0, K, 65536):
+            j = i + 65536
+            s = lambda yy, xx: fmap[b, :, yy[:, i:j], xx[:, i:j]].permute(0, 2, 1).float()
+            out[:, :, i:j] = (s(y0, x0) * (1 - wx[..., i:j]) + s(y0, x1) * wx[..., i:j]) * (1 - wy[..., i:j]) \
+                + (s(y1, x0) * (1 - wx[..., i:j]) + s(y1, x1) * wx[..., i:j]) * wy[..., i:j]
+        return out
+
     grid = queries_ndc.view(B, K, 1, 2)  # (B, K, 1, 2)
 
     # Bilinear interpolation, align_corners=False (consistent with [-1,1] pixel center convention)
@@ -639,6 +657,7 @@ class DinoV3ProjFeatureExtractor(nn.Module):
                 )  # [B, D, H', W']
                 
                 # Sample from high-res feature map using same projection coordinates
+                if os.environ.get("PIXAL_MEMLOG"): print(f"[mem] before proj_grid hr: alloc={torch.cuda.memory_allocated()/2**30:.2f} reserved={torch.cuda.memory_reserved()/2**30:.2f} GiB", flush=True)
                 z_proj_hr = self.proj_grid(
                     hr_features,
                     camera_angle_x,
@@ -647,6 +666,7 @@ class DinoV3ProjFeatureExtractor(nn.Module):
                     transform_matrix,
                     BHWC=False  # hr_features is [B, C, H', W']
                 )  # [B, grid_res³, D]
+                del hr_features
                 
                 # Concatenate lr and hr: [B, grid_res³, D*2]
                 z_proj = torch.cat([z_proj_lr, z_proj_hr], dim=-1)

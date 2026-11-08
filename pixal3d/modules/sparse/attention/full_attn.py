@@ -240,9 +240,9 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
         kv_offs = [0] + list(torch.cumsum(torch.tensor(kv_seqlen), dim=0).tolist())
         outs = []
         for i in range(len(q_seqlen)):
-            qi = q[q_offs[i]:q_offs[i+1]].unsqueeze(0).permute(0, 2, 1, 3)    # [1, H, Lq,  C]
-            ki = k[kv_offs[i]:kv_offs[i+1]].unsqueeze(0).permute(0, 2, 1, 3)  # [1, H, Lkv, C]
-            vi = v[kv_offs[i]:kv_offs[i+1]].unsqueeze(0).permute(0, 2, 1, 3)  # [1, H, Lkv, C]
+            qi = q[q_offs[i]:q_offs[i+1]].unsqueeze(0).permute(0, 2, 1, 3).contiguous()    # [1, H, Lq,  C]
+            ki = k[kv_offs[i]:kv_offs[i+1]].unsqueeze(0).permute(0, 2, 1, 3).contiguous()  # [1, H, Lkv, C]
+            vi = v[kv_offs[i]:kv_offs[i+1]].unsqueeze(0).permute(0, 2, 1, 3).contiguous()  # [1, H, Lkv, C]
             out_i = _sdpa(qi, ki, vi)                                            # [1, H, Lq,  C]
             outs.append(out_i.permute(0, 2, 1, 3).squeeze(0))                   # [Lq, H, C]
         out = torch.cat(outs, dim=0)                                             # [T_Q, H, C]

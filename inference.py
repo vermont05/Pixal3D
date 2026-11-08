@@ -8,7 +8,7 @@ import cv2
 from PIL import Image
 
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 os.environ.setdefault("ATTN_BACKEND", "flash_attn")
 os.environ["FLEX_GEMM_AUTOTUNE_CACHE_PATH"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'autotune_cache.json')
 os.environ["FLEX_GEMM_AUTOTUNER_VERBOSE"] = '1'
@@ -260,9 +260,10 @@ def run_inference(
 
     # Extract GLB
     print("[Inference] Extracting GLB...")
+    torch.cuda.empty_cache()
     glb = o_voxel.postprocess.to_glb(
-        vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs,
-        coords=mesh.coords, attr_layout=pipeline.pbr_attr_layout,
+        vertices=mesh.vertices, faces=mesh.faces, attr_volume=mesh.attrs.cuda(),
+        coords=mesh.coords.cuda(), attr_layout=pipeline.pbr_attr_layout,
         grid_size=res, aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
         decimation_target=1000000, texture_size=4096,
         remesh=True, remesh_band=1, remesh_project=0, use_tqdm=True,

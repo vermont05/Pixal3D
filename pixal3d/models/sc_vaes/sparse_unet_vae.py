@@ -376,6 +376,7 @@ class SparseUnetVaeEncoder(nn.Module):
         for i, res in enumerate(self.blocks):
             for j, block in enumerate(res):
                 h = block(h)
+        torch.cuda.empty_cache()  # without expandable segments the cache is too fragmented for the fp32 copy
         h = h.type(x.dtype)
         h = h.replace(F.layer_norm(h.feats, h.feats.shape[-1:]))
         h = self.to_latent(h)
@@ -495,9 +496,16 @@ class SparseUnetVaeDecoder(nn.Module):
                         h = block(h, subdiv=guide_subs[i] if guide_subs is not None else None)
                 else:
                     h = block(h)
-        h = h.type(x.dtype)
-        h = h.replace(F.layer_norm(h.feats, h.feats.shape[-1:]))
-        h = self.output_layer(h)
+        if h.feats.numel() * 4 > 256 * 2**20:
+            # Too large for an fp32 copy on 8 GB: run the last layers on the CPU. The output has few channels, so it fits back on the GPU.
+            dev = h.feats.device
+            feats = F.layer_norm(h.feats.cpu().type(x.dtype), h.feats.shape[-1:])
+            feats = F.linear(feats, self.output_layer.weight.cpu(), self.output_layer.bias.cpu())
+            h = h.replace(feats.to(dev))
+        else:
+            h = h.type(x.dtype)
+            h = h.replace(F.layer_norm(h.feats, h.feats.shape[-1:]))
+            h = self.output_layer(h)
         if self.training and self.pred_subdiv:
             return h, subs_gt, subs
         else:

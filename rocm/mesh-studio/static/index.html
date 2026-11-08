@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" href="data:,">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mesh Studio</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel2: #1c232d;
+    --border: #2a3340;
+    --text: #e6edf3;
+    --muted: #8b98a7;
+    --accent: #4f8cff;
+    --good: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 14px; }
+  h1 { font-size: 20px; margin: 6px 2px 12px; font-weight: 650; letter-spacing: .2px; }
+  h1 .sub { color: var(--muted); font-weight: 400; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 860px) {
+    .grid { grid-template-columns: 360px 1fr; align-items: start; }
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+  }
+  .card + .card { margin-top: 14px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+
+  /* drop zone */
+  #drop {
+    border: 1.5px dashed var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    min-height: 96px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: rgba(79,140,255,.08); }
+  #preview {
+    margin-top: 10px;
+    border-radius: 10px;
+    padding: 8px;
+    display: none;
+    background-color: #20262e;
+    background-image:
+      linear-gradient(45deg, #2b333d 25%, transparent 25%),
+      linear-gradient(-45deg, #2b333d 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #2b333d 75%),
+      linear-gradient(-45deg, transparent 75%, #2b333d 75%);
+    background-size: 18px 18px;
+    background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+  }
+  #preview img { max-width: 100%; max-height: 220px; display: block; margin: 0 auto; border-radius: 4px; }
+  .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+  input[type="number"], input[type="text"] {
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 14px;
+  }
+  input[type="number"] { width: 92px; }
+  button, .btn {
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font-size: 14px; cursor: pointer;
+  }
+  button:hover, .btn:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.danger:hover { border-color: var(--bad); color: var(--bad); }
+  .msg { font-size: 13px; margin-top: 8px; min-height: 16px; }
+  .msg.warn { color: var(--warn); }
+  .msg.bad { color: var(--bad); }
+  .msg.good { color: var(--good); }
+  .alpha-badge { font-size: 12px; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--border); color: var(--muted); }
+  .alpha-badge.ok { color: var(--good); border-color: var(--good); }
+  .alpha-badge.no { color: var(--bad); border-color: var(--bad); }
+
+  /* bars */
+  .bar { margin: 8px 0; }
+  .bar .lbl { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+  .bar .track { height: 10px; background: var(--panel2); border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+  .bar .fill { height: 100%; width: 0%; background: var(--accent); transition: width .3s; }
+  .bar.ram .fill { background: var(--good); }
+
+  /* stages */
+  #stages { list-style: none; margin: 0; padding: 0; }
+  #stages li { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  #stages li:last-child { border-bottom: none; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--border); flex: 0 0 auto; }
+  li.done .dot { background: var(--good); border-color: var(--good); }
+  li.active .dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px rgba(79,140,255,.2); }
+  .st-name { flex: 1; }
+  li.pending .st-name { color: var(--muted); }
+  .st-time { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .prog { margin-top: 12px; }
+  .prog .track { height: 12px; background: var(--panel2); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .prog .fill { height: 100%; width: 0%; background: var(--accent); transition: width .3s; }
+  .prog .meta { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+  .detail { color: var(--text); }
+  .note { font-size: 12.5px; color: var(--muted); margin-top: 10px; line-height: 1.4; }
+
+  /* log */
+  details.log { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel2); }
+  details.log summary { cursor: pointer; padding: 8px 10px; font-size: 13px; color: var(--muted); list-style: none; }
+  details.log summary::-webkit-details-marker { display: none; }
+  #logbox { padding: 10px; max-height: 220px; overflow: auto; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; color: #cdd6e0; }
+
+  /* viewer */
+  #viewer-card { display: flex; flex-direction: column; }
+  model-viewer {
+    width: 100%; height: 340px; background: radial-gradient(circle at 50% 40%, #1b222c, #10141a);
+    border-radius: 10px; border: 1px solid var(--border); display: block;
+  }
+  @media (min-width: 860px) { model-viewer { height: 460px; } }
+  .viewer-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; pointer-events: none; }
+  .viewer-wrap { position: relative; }
+  #viewer-load { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,.55); border: 1px solid var(--border); padding: 4px 10px; border-radius: 20px; font-size: 12px; display: none; }
+  .toggles { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: none; border-radius: 0; background: var(--panel2); }
+  .seg button.on { background: var(--accent); color: #06121f; font-weight: 600; }
+  a.dl { color: var(--accent); text-decoration: none; font-size: 14px; }
+  a.dl:hover { text-decoration: underline; }
+
+  /* history */
+  #history { display: flex; flex-direction: column; gap: 8px; }
+  .job {
+    display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center;
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px; cursor: pointer;
+  }
+  .job:hover { border-color: var(--accent); }
+  .job .thumb { width: 44px; height: 44px; border-radius: 6px; background: #20262e center/contain no-repeat; border: 1px solid var(--border); }
+  .job .meta { min-width: 0; }
+  .job .meta .t { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job .meta .s { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job .st { font-size: 12px; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--border); white-space: nowrap; }
+  .job .st.done { color: var(--good); border-color: var(--good); }
+  .job .st.running { color: var(--accent); border-color: var(--accent); }
+  .job .st.queued { color: var(--warn); border-color: var(--warn); }
+  .job .st.failed, .job .st.cancelled { color: var(--bad); border-color: var(--bad); }
+  .job .trash { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 4px; }
+  .job .trash:hover { color: var(--bad); }
+  .job .err { grid-column: 1 / -1; font-size: 12px; color: var(--bad); }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 18px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mesh Studio <span class="sub">image &rarr; textured GLB on the eGPU</span></h1>
+  <div class="grid">
+    <!-- LEFT / TOP COLUMN -->
+    <div>
+      <div class="card">
+        <h2>New generation</h2>
+        <div id="drop">Click to choose, drag &amp; drop, or paste an image</div>
+        <input type="file" id="file" accept="image/*" hidden />
+        <div id="preview"><img id="preview-img" alt="preview" /></div>
+        <div class="row">
+          <span class="alpha-badge" id="alpha-badge">no image</span>
+          <button id="paste-btn" title="Paste from clipboard">Paste</button>
+          <label style="font-size:13px;color:var(--muted)">Seed</label>
+          <input type="number" id="seed" value="42" />
+        </div>
+        <div class="row">
+          <button class="primary" id="generate">Generate</button>
+        </div>
+        <div class="msg" id="create-msg"></div>
+      </div>
+
+      <div class="card">
+        <h2>Live</h2>
+        <div class="bar vram">
+          <div class="lbl"><span>VRAM</span><span id="vram-txt"></span></div>
+          <div class="track"><div class="fill" id="vram-fill"></div></div>
+        </div>
+        <div class="bar ram">
+          <div class="lbl"><span>System RAM free</span><span id="ram-txt"></span></div>
+          <div class="track"><div class="fill" id="ram-fill"></div></div>
+        </div>
+        <div id="idle" class="note" style="margin-top:8px">Nothing running. Queued jobs start in order.</div>
+        <div id="live" style="display:none">
+          <ul id="stages"></ul>
+          <div class="prog">
+            <div class="track"><div class="fill" id="prog-fill"></div></div>
+            <div class="meta"><span class="detail" id="prog-detail"></span><span id="prog-step"></span></div>
+          </div>
+          <div class="meta" style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-top:6px">
+            <span>Elapsed <span id="elapsed" style="color:var(--text);font-variant-numeric:tabular-nums"></span></span>
+            <button class="danger" id="cancel">Cancel</button>
+          </div>
+          <details class="log" id="log-details">
+            <summary>Log</summary>
+            <pre id="logbox"></pre>
+          </details>
+          <div class="note">A run takes about <b>10 minutes</b>. The 3D preview only appears at the very end &mdash; the mesh does not exist until the GLB is exported.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+      <div class="card" id="viewer-card">
+        <h2>Preview</h2>
+        <div class="viewer-wrap">
+          <model-viewer id="mv" camera-controls auto-rotate shadow-intensity="1"
+            environment-image="neutral" exposure="1" camera-orbit="0deg 80deg 0deg"
+            min-camera-orbit="auto auto" max-camera-orbit="auto 85deg auto"
+            style="position:relative"></model-viewer>
+          <div id="viewer-load">Loading model&hellip;</div>
+          <div class="viewer-empty" id="viewer-empty">No finished model yet</div>
+        </div>
+        <div class="toggles">
+          <span class="seg" id="mat-seg">
+            <button data-mode="textured" class="on">Textured</button>
+            <button data-mode="clay">Clay</button>
+          </span>
+          <a class="dl" id="dl" href="#" download style="visibility:hidden">Download GLB</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>History</h2>
+        <div id="history"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/static/model-viewer.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var STAGES = ["Loading models", "Sparse structure", "Shape 512", "Shape 1024", "Texture", "GLB export"];
+
+  // ---- element refs ----
+  var $ = function (id) { return document.getElementById(id); };
+  var drop = $("drop"), fileInput = $("file"), preview = $("preview"), previewImg = $("preview-img");
+  var alphaBadge = $("alpha-badge"), pasteBtn = $("paste-btn"), seedInput = $("seed");
+  var generateBtn = $("generate"), createMsg = $("create-msg");
+  var idleEl = $("idle"), liveEl = $("live");
+  var vramTxt = $("vram-txt"), vramFill = $("vram-fill"), ramTxt = $("ram-txt"), ramFill = $("ram-fill");
+  var stagesEl = $("stages"), progFill = $("prog-fill"), progDetail = $("prog-detail"), progStep = $("prog-step");
+  var elapsedEl = $("elapsed"), cancelBtn = $("cancel"), logDetails = $("log-details"), logbox = $("logbox");
+  var mv = $("mv"), viewerLoad = $("viewer-load"), viewerEmpty = $("viewer-empty"), dl = $("dl");
+  var historyEl = $("history"), matSeg = $("mat-seg");
+
+  // ---- state ----
+  var state = {
+    file: null,        // File/Blob to upload
+    objUrl: null,      // object URL for preview
+    hasAlpha: null,    // null = unknown, true/false from canvas check
+    loadedJobId: null, // job id currently shown in the viewer
+    clay: false,       // clay mode on/off
+    lastStatus: null,
+    lastJobs: []
+  };
+
+  // ---- tiny helpers ----
+  function fmtMB(mb) {
+    if (mb == null) return "—";
+    if (mb >= 1024) return (mb / 1024).toFixed(2) + " GB";
+    return Math.round(mb) + " MB";
+  }
+  function fmtDur(sec) {
+    if (sec == null) return "—";
+    sec = Math.max(0, Math.round(sec));
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return (m ? m + "m " : "") + s + "s";
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text; // textContent: safe, no HTML injection
+    return e;
+  }
+  function setMsg(kind, text) {
+    createMsg.className = "msg" + (kind ? " " + kind : "");
+    createMsg.textContent = text || "";
+  }
+
+  // ---- image intake (choose / drop / paste) ----
+  function acceptBlob(blob, name) {
+    if (!blob || !/^image\//.test(blob.type || "")) {
+      setMsg("bad", "That doesn't look like an image.");
+      return;
+    }
+    if (state.objUrl) URL.revokeObjectURL(state.objUrl);
+    state.file = blob;
+    state.objUrl = URL.createObjectURL(blob);
+    previewImg.src = state.objUrl;
+    preview.style.display = "block";
+    setMsg("", "");
+    checkAlphaThen(function (hasAlpha) {
+      state.hasAlpha = hasAlpha;
+      if (hasAlpha) {
+        alphaBadge.textContent = "transparent ✓";
+        alphaBadge.className = "alpha-badge ok";
+      } else {
+        alphaBadge.textContent = "opaque — will be rejected";
+        alphaBadge.className = "alpha-badge no";
+        setMsg("warn", "This image has a fully opaque background. It needs a transparent background; automatic background removal is not set up.");
+      }
+    }, name);
+  }
+
+  function checkAlphaThen(cb, name) {
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var w = img.naturalWidth || 1, h = img.naturalHeight || 1;
+        var c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        var ctx = c.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0, w, h);
+        var data = ctx.getImageData(0, 0, w, h).data;
+        var has = false;
+        for (var i = 3; i < data.length; i += 4) { if (data[i] < 255) { has = true; break; } }
+        cb(has);
+      } catch (e) { cb(false); }
+    };
+    img.onerror = function () { cb(false); };
+    img.src = state.objUrl;
+  }
+
+  drop.addEventListener("click", function () { fileInput.click(); });
+  fileInput.addEventListener("change", function () {
+    if (fileInput.files && fileInput.files[0]) acceptBlob(fileInput.files[0], fileInput.files[0].name);
+  });
+  ["dragenter", "dragover"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add("over"); });
+  });
+  ["dragleave", "drop"].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove("over"); });
+  });
+  drop.addEventListener("drop", function (e) {
+    var dt = e.dataTransfer;
+    if (dt && dt.files && dt.files[0]) acceptBlob(dt.files[0], dt.files[0].name);
+  });
+
+  // Paste button: use the async Clipboard API only when it exists (not over plain http).
+  pasteBtn.addEventListener("click", function () {
+    if (navigator.clipboard && typeof navigator.clipboard.read === "function") {
+      navigator.clipboard.read().then(function (items) {
+        for (var i = 0; i < items.length; i++) {
+          var t = items[i].types.find(function (ty) { return ty.indexOf("image") === 0; });
+          if (t) {
+            items[i].getType(t).then(function (blob) { acceptBlob(blob, "pasted-image"); });
+            return;
+          }
+        }
+        setMsg("warn", "No image on the clipboard.");
+      }).catch(function () {
+        setMsg("warn", "Clipboard read failed. Try Ctrl+V / Cmd+V instead.");
+      });
+    } else {
+      setMsg("warn", "Clipboard API unavailable over http — press Ctrl+V / Cmd+V to paste.");
+    }
+  });
+
+  // Document paste listener: works regardless of the Clipboard API.
+  document.addEventListener("paste", function (e) {
+    var cd = e.clipboardData;
+    if (!cd) return;
+    var items = cd.items;
+    if (items) {
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf("image") === 0) {
+          var blob = items[i].getAsFile();
+          if (blob) { acceptBlob(blob, "pasted-image"); e.preventDefault(); return; }
+        }
+      }
+    }
+    var files = cd.files;
+    if (files && files[0]) { acceptBlob(files[0], files[0].name); e.preventDefault(); }
+  });
+
+  // ---- generate ----
+  generateBtn.addEventListener("click", function () {
+    if (!state.file) { setMsg("bad", "Choose, drop, or paste an image first."); return; }
+    if (state.hasAlpha === false) {
+      if (!confirm("This image looks fully opaque and the server will reject it. Submit anyway?")) return;
+    }
+    var seed = parseInt(seedInput.value, 10);
+    if (isNaN(seed)) seed = 42;
+    var fd = new FormData();
+    fd.append("image", state.file, (state.file.name || "upload.png"));
+    fd.append("seed", String(seed));
+    setMsg("", "Submitting…");
+    generateBtn.disabled = true;
+    fetch("/api/jobs", { method: "POST", body: fd })
+      .then(function (r) {
+        if (r.ok) {
+          setMsg("good", "Queued. Watch the Live panel — a preview appears when it finishes.");
+          if (state.objUrl) { URL.revokeObjectURL(state.objUrl); state.objUrl = null; }
+          state.file = null; state.hasAlpha = null;
+          preview.style.display = "none";
+          previewImg.removeAttribute("src");
+          alphaBadge.textContent = "no image"; alphaBadge.className = "alpha-badge";
+          fileInput.value = "";
+          tick(); // refresh immediately
+        } else {
+          return r.json().then(function (j) {
+            setMsg("bad", (j && j.detail) ? j.detail : ("Server error " + r.status));
+          }).catch(function () { setMsg("bad", "Server error " + r.status); });
+        }
+      })
+      .catch(function (e) { setMsg("bad", "Request failed: " + e); })
+      .finally(function () { generateBtn.disabled = false; });
+  });
+
+  // ---- cancel ----
+  cancelBtn.addEventListener("click", function () {
+    var jid = state.lastStatus && state.lastStatus.running ? state.lastStatus.running.id : null;
+    if (!jid) return;
+    if (!confirm("Cancel this job?")) return;
+    fetch("/api/jobs/" + encodeURIComponent(jid) + "/cancel", { method: "POST" }).then(tick);
+  });
+
+  // ---- viewer material toggles (Textured / Clay) ----
+  // model-viewer scene-graph API. Originals are kept per material, because a loaded model is replaced on each job.
+  function applyClay(on) {
+    if (!mv.model || !mv.model.materials) return;
+    mv.model.materials.forEach(function (mat) {
+      var pbr = mat.pbrMetallicRoughness;
+      if (on) {
+        if (!mat._clayOrig) {
+          mat._clayOrig = {
+            base: pbr.baseColorTexture.texture,
+            mr: pbr.metallicRoughnessTexture.texture,
+            col: Array.from(pbr.baseColorFactor),
+            metal: pbr.metallicFactor,
+            rough: pbr.roughnessFactor
+          };
+        }
+        pbr.baseColorTexture.setTexture(null);
+        pbr.metallicRoughnessTexture.setTexture(null);
+        pbr.setBaseColorFactor([0.72, 0.72, 0.72, 1]);
+        pbr.setMetallicFactor(0);
+        pbr.setRoughnessFactor(0.75);
+      } else if (mat._clayOrig) {
+        var o = mat._clayOrig;
+        pbr.baseColorTexture.setTexture(o.base);
+        pbr.metallicRoughnessTexture.setTexture(o.mr);
+        pbr.setBaseColorFactor(o.col);
+        pbr.setMetallicFactor(o.metal);
+        pbr.setRoughnessFactor(o.rough);
+        delete mat._clayOrig;
+      }
+    });
+  }
+  matSeg.addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b) return;
+    var mode = b.getAttribute("data-mode");
+    state.clay = (mode === "clay");
+    Array.prototype.forEach.call(matSeg.children, function (x) { x.classList.toggle("on", x === b); });
+    if (mv.src) applyClay(state.clay);
+  });
+
+  // model-viewer load: hide loading indicator, re-apply clay if needed, hide empty overlay
+  mv.addEventListener("load", function () {
+    viewerLoad.style.display = "none";
+    viewerEmpty.style.display = "none";
+    if (state.clay) applyClay(true);
+  });
+  mv.addEventListener("error", function () {
+    viewerLoad.style.display = "none";
+  });
+
+  function loadJobIntoViewer(job) {
+    if (!job || job.status !== "done" || !job.glb_size) return;
+    if (job.id === state.loadedJobId) return; // do not reset/reload on every poll
+    state.loadedJobId = job.id;
+    mv.removeAttribute("src");
+    state.clay = false;
+    Array.prototype.forEach.call(matSeg.children, function (x) { x.classList.toggle("on", x.getAttribute("data-mode") === "textured"); });
+    viewerEmpty.style.display = "none";
+    viewerLoad.style.display = "block";
+    mv.src = "/files/" + job.id + ".glb";
+    dl.href = "/files/" + job.id + ".glb";
+    dl.setAttribute("download", job.id + ".glb");
+    dl.style.visibility = "visible";
+  }
+
+  // ---- history ----
+  function renderHistory(jobs) {
+    historyEl.innerHTML = "";
+    if (!jobs.length) { historyEl.appendChild(el("div", "empty", "No jobs yet.")); return; }
+    jobs.forEach(function (j) {
+      var row = el("div", "job");
+      var thumb = el("div", "thumb");
+      if (j.id) thumb.style.backgroundImage = "url('/files/" + j.id + ".png')";
+      var meta = el("div", "meta");
+      var t = el("div", "t");
+      t.textContent = (j.source ? j.source + "  ·  " : "") + "seed " + j.seed;
+      var s = el("div", "s");
+      var bits = ["status " + j.status, "time " + fmtDur(j.elapsed)];
+      if (j.peak_vram_mb) bits.push("peak VRAM " + fmtMB(j.peak_vram_mb));
+      s.textContent = bits.join("  ·  ");
+      meta.appendChild(t); meta.appendChild(s);
+      var st = el("span", "st " + j.status, j.status);
+      var trash = el("button", "trash", "🗑");
+      trash.title = "Delete";
+      trash.addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (!confirm("Delete this job and its files?")) return;
+        fetch("/api/jobs/" + encodeURIComponent(j.id), { method: "DELETE" }).then(tick);
+      });
+      row.appendChild(thumb); row.appendChild(meta); row.appendChild(st); row.appendChild(trash);
+      if (j.status === "failed" && j.error) row.appendChild(el("div", "err", j.error));
+      row.addEventListener("click", function () { loadJobIntoViewer(j); });
+      historyEl.appendChild(row);
+    });
+  }
+
+  // ---- live panel ----
+  function renderStages(running) {
+    stagesEl.innerHTML = "";
+    var activeIdx = running ? STAGES.indexOf(running.stage) : -1;
+    var times = (running && running.stage_times) || {};
+    STAGES.forEach(function (name, i) {
+      var li = el("li", "pending");
+      if (running) {
+        if (i < activeIdx) li.className = "done";
+        else if (i === activeIdx) li.className = "active";
+      } else {
+        // no running job: everything is pending (fresh) — keep neutral
+        li.className = "pending";
+      }
+      var dot = el("span", "dot");
+      var nm = el("span", "st-name", name);
+      var tm = el("span", "st-time", times[name] != null ? fmtDur(times[name]) : "");
+      li.appendChild(dot); li.appendChild(nm); li.appendChild(tm);
+      stagesEl.appendChild(li);
+    });
+  }
+
+  function renderLive(status) {
+    var running = status.running;
+    // resources always
+    var vu = status.vram_used_mb || 0, vt = status.vram_total_mb || 0;
+    vramTxt.textContent = fmtMB(vu) + (vt ? " / " + fmtMB(vt) : "");
+    vramFill.style.width = (vt ? Math.min(100, vu / vt * 100) : 0) + "%";
+    var ra = status.ram_available_mb || 0, rt = status.ram_total_mb || 0;
+    ramTxt.textContent = fmtMB(ra) + (rt ? " / " + fmtMB(rt) : "");
+    ramFill.style.width = (rt ? Math.min(100, ra / rt * 100) : 0) + "%";
+
+    if (running) {
+      idleEl.style.display = "none";
+      liveEl.style.display = "block";
+      renderStages(running);
+      var pct = running.percent || 0;
+      progFill.style.width = Math.min(100, pct) + "%";
+      progDetail.textContent = running.detail || running.stage || "";
+      progStep.textContent = running.step || (pct + "%");
+      elapsedEl.textContent = fmtDur(running.elapsed);
+      cancelBtn.style.display = "";
+      if (logDetails.open) logbox.textContent = state.lastLog || "";
+    } else {
+      liveEl.style.display = "none";
+      idleEl.style.display = "block";
+      cancelBtn.style.display = "none";
+    }
+  }
+
+  // ---- polling ----
+  function tick() {
+    Promise.all([
+      fetch("/api/status").then(function (r) { return r.json(); }),
+      fetch("/api/jobs").then(function (r) { return r.json(); })
+    ]).then(function (res) {
+      var status = res[0], jobs = res[1] || [];
+      state.lastStatus = status;
+      state.lastJobs = jobs;
+      renderLive(status);
+      renderHistory(jobs);
+      // newest finished job -> viewer (auto-load on completion, no reset per poll)
+      var done = jobs.filter(function (j) { return j.status === "done" && j.glb_size; });
+      if (done.length) {
+        done.sort(function (a, b) { return (b.started || 0) - (a.started || 0); });
+        loadJobIntoViewer(done[0]);
+      }
+      // poll the running job's log
+      if (status.running) {
+        fetch("/api/jobs/" + encodeURIComponent(status.running.id) + "/log")
+          .then(function (r) { return r.text(); })
+          .then(function (txt) {
+            state.lastLog = txt;
+            if (logDetails.open) logbox.textContent = txt;
+          });
+      }
+    }).catch(function () {});
+  }
+
+  setInterval(function () {
+    tick();
+  }, 2000);
+  tick();
+})();
+</script>
+</body>
+</html>
