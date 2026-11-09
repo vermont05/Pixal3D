@@ -1,6 +1,6 @@
 # Pixal3D on an 8 GB AMD GPU (ROCm)
 
-Pixal3D image to textured GLB on an RX 7600M XT (gfx1102, 8 GB) eGPU with a Ryzen 6800U host (16 GB RAM), using
+Pixal3D image to textured GLB on an RX 7600M XT (gfx1102, 8 GB) eGPU with a Ryzen 6800U host (30 GB RAM), using
 TheRock ROCm 10.1. The 1024 pipeline (`1024_cascade`) takes 9.6 min, with 7.28 GB peak VRAM and 3.4 GB of RAM left.
 
 The Python changes are committed on this branch (see `git diff f7cf384`). This folder holds everything else.
